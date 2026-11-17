@@ -1,0 +1,2 @@
+Name	Email	Number	Date	Category
+Amar Sharma	amar.sharma@outlook.com	8926458567	2026-11-11	Samosa

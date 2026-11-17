@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>License Admin</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --text:#1c2230; --muted:#667085; --line:#e3e6ec;
+    --accent:#2457d6; --accent-text:#ffffff; --ok:#177a45; --ok-bg:#e3f5ea;
+    --bad:#b42318; --bad-bg:#fde8e6; --warn:#a15c07; --warn-bg:#fdf1de; --field:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12151b; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a313d;
+      --accent:#6f95ff; --accent-text:#0e1320; --ok:#5fd394; --ok-bg:#16301f;
+      --bad:#ff8c80; --bad-bg:#3a1a17; --warn:#f2b45c; --warn-bg:#35280f; --field:#12151b;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 16px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);flex:1;min-width:140px}
+  input{background:var(--field);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;width:100%}
+  input:focus{outline:2px solid var(--accent);outline-offset:1px}
+  button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+  button.danger{color:var(--bad)}
+  button.small{padding:5px 9px;font-size:13px}
+  .msg{margin-top:10px;font-size:14px;min-height:20px}
+  .msg.err{color:var(--bad)} .msg.good{color:var(--ok)}
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;min-width:980px}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .keytext{font-family:ui-monospace,Consolas,monospace;font-size:13px;user-select:all;white-space:nowrap}
+  td.nw{white-space:nowrap}
+  .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+  .b-ok{background:var(--ok-bg);color:var(--ok)} .b-bad{background:var(--bad-bg);color:var(--bad)} .b-warn{background:var(--warn-bg);color:var(--warn)}
+  .actions{display:flex;flex-wrap:wrap;gap:6px;min-width:290px}
+  .actions button{white-space:nowrap}
+  .wrap{max-width:1240px}
+  .empty{color:var(--muted);padding:18px 4px}
+  .hidden{display:none}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>License Admin</h1>
+      <p class="sub">Keys banao, band karo, date badhao. Band karte hi user ki script agli check par ruk jati hai.</p>
+    </div>
+    <button id="logout" class="small hidden">Logout</button>
+  </div>
+
+  <div class="card" id="loginCard">
+    <div class="row">
+      <label>Admin token
+        <input type="password" id="token" placeholder="server par jo ADMIN_TOKEN rakha hai" autocomplete="off">
+      </label>
+      <button class="primary" id="loginBtn">Login</button>
+    </div>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="card">
+      <div class="row">
+        <label>User ka naam / note
+          <input type="text" id="label" placeholder="jaise Ravi (Delhi)" maxlength="80">
+        </label>
+        <label style="max-width:150px">Kitne din (0 = hamesha)
+          <input type="number" id="days" min="0" value="30">
+        </label>
+        <label style="max-width:150px">Kitne computer
+          <input type="number" id="devices" min="1" max="50" value="1">
+        </label>
+        <button class="primary" id="createBtn">Naya key banao</button>
+      </div>
+      <div class="msg" id="createMsg"></div>
+    </div>
+
+    <div class="card">
+      <div class="topbar">
+        <strong id="count">Keys</strong>
+        <button class="small" id="refresh">Refresh</button>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Key</th><th>Note</th><th>Status</th><th>Expiry</th><th>Computers</th><th>Last use</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="empty">Abhi koi key nahi hai. Upar se naya banao.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let token = "";
+try { token = sessionStorage.getItem("adminToken") || ""; } catch (e) {}
+
+function setMsg(id, text, kind) {
+  const el = $(id);
+  el.textContent = text || "";
+  el.className = "msg" + (kind ? " " + kind : "");
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "error " + res.status);
+  return data;
+}
+
+function fmtDate(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function daysText(ms) {
+  if (!ms) return "No expiry";
+  const d = Math.ceil((ms - Date.now()) / 86400000);
+  return d >= 0 ? fmtDate(ms).split(",")[0] + " (" + d + " din)" : "Khatam";
+}
+
+function badge(text, cls) {
+  const s = document.createElement("span");
+  s.className = "badge " + cls;
+  s.textContent = text;
+  return s;
+}
+
+function btn(text, cls, handler) {
+  const b = document.createElement("button");
+  b.className = "small " + (cls || "");
+  b.textContent = text;
+  b.addEventListener("click", handler);
+  return b;
+}
+
+async function act(label, fn) {
+  try {
+    await fn();
+    await load();
+  } catch (e) {
+    alert(label + ": " + e.message);
+  }
+}
+
+function render(keys) {
+  const body = $("rows");
+  body.replaceChildren();
+  $("count").textContent = keys.length + (keys.length === 1 ? " key" : " keys");
+  $("empty").classList.toggle("hidden", keys.length > 0);
+  for (const k of keys) {
+    const tr = document.createElement("tr");
+    const enc = encodeURIComponent(k.key);
+
+    const tdKey = document.createElement("td");
+    const code = document.createElement("span");
+    code.className = "keytext";
+    code.textContent = k.key;
+    tdKey.append(code);
+
+    const tdNote = document.createElement("td");
+    tdNote.textContent = k.label || "—";
+
+    const tdStatus = document.createElement("td");
+    if (k.blocked) tdStatus.append(badge("Band", "b-bad"));
+    else if (k.expired) tdStatus.append(badge("Date khatam", "b-warn"));
+    else tdStatus.append(badge("Active", "b-ok"));
+
+    const tdExp = document.createElement("td");
+    tdExp.textContent = daysText(k.expiresAt);
+
+    const tdDev = document.createElement("td");
+    tdDev.textContent = k.devices.length + " / " + k.maxDevices;
+
+    const tdSeen = document.createElement("td");
+    tdSeen.textContent = k.lastSeen
+      ? new Date(k.lastSeen).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+      : "—";
+
+    const tdAct = document.createElement("td");
+    const box = document.createElement("div");
+    box.className = "actions";
+    box.append(
+      btn("Copy", "", async () => {
+        try { await navigator.clipboard.writeText(k.key); } catch (e) { prompt("Key copy karo:", k.key); }
+      }),
+      k.blocked
+        ? btn("Chalu karo", "", () => act("Unblock", () => api("POST", "/api/admin/keys/" + enc + "/unblock")))
+        : btn("Band karo", "danger", () => act("Block", () => api("POST", "/api/admin/keys/" + enc + "/block"))),
+      btn("+30 din", "", () => act("Extend", () => api("POST", "/api/admin/keys/" + enc + "/extend", { days: 30 }))),
+      btn("Hamesha", "", () => act("No expiry", () => api("POST", "/api/admin/keys/" + enc + "/no-expiry"))),
+      btn("Reset PC", "", () => {
+        if (confirm("Is key ke saved computers hata dein? Phir ye kisi naye computer par chal jayegi.")) {
+          act("Reset", () => api("POST", "/api/admin/keys/" + enc + "/reset-devices"));
+        }
+      }),
+      btn("Delete", "danger", () => {
+        if (confirm("Ye key hamesha ke liye delete karni hai? Is user ki script chalni band ho jayegi.")) {
+          act("Delete", () => api("DELETE", "/api/admin/keys/" + enc));
+        }
+      })
+    );
+    tdAct.append(box);
+
+    for (const td of [tdKey, tdStatus, tdExp, tdDev, tdSeen]) td.className = "nw";
+    tr.append(tdKey, tdNote, tdStatus, tdExp, tdDev, tdSeen, tdAct);
+    body.append(tr);
+  }
+}
+
+async function load() {
+  render(await api("GET", "/api/admin/keys"));
+}
+
+function showApp(on) {
+  $("loginCard").classList.toggle("hidden", on);
+  $("app").classList.toggle("hidden", !on);
+  $("logout").classList.toggle("hidden", !on);
+}
+
+async function login() {
+  token = $("token").value.trim();
+  if (!token) return setMsg("loginMsg", "Token daalo", "err");
+  try {
+    await load();
+    try { sessionStorage.setItem("adminToken", token); } catch (e) {}
+    $("token").value = "";
+    setMsg("loginMsg", "");
+    showApp(true);
+  } catch (e) {
+    token = "";
+    setMsg("loginMsg", e.message, "err");
+  }
+}
+
+$("loginBtn").addEventListener("click", login);
+$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+$("refresh").addEventListener("click", () => act("Refresh", load));
+$("logout").addEventListener("click", () => {
+  token = "";
+  try { sessionStorage.removeItem("adminToken"); } catch (e) {}
+  showApp(false);
+});
+
+$("createBtn").addEventListener("click", async () => {
+  try {
+    const k = await api("POST", "/api/admin/keys", {
+      label: $("label").value.trim(),
+      days: Number($("days").value) || 0,
+      maxDevices: Number($("devices").value) || 1,
+    });
+    $("label").value = "";
+    setMsg("createMsg", "Key ban gayi: " + k.key, "good");
+    await load();
+  } catch (e) {
+    setMsg("createMsg", e.message, "err");
+  }
+});
+
+if (token) {
+  load().then(() => showApp(true)).catch(() => { token = ""; });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "automation-license-server",
+  "version": "1.0.0",
+  "description": "Remote automation license management server",
+  "main": "Server.js",
+  "scripts": {
+    "start": "node Server.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "express": "^4.21.2",
+    "mongodb": "^6.12.0"
+  }
+}
