@@ -107,8 +107,8 @@ def write_readme(package_dir):
     readme = r"""AUTOMATION SOFTWARE - CUSTOMER PACKAGE
 
 Keep the EXE files, HTML files, data.txt, and ms-playwright folder together.
-Extract the ZIP, open PowerShell in the extracted Automation_Package folder,
-then run these commands one at a time:
+Extract the complete ZIP before using the software. You can double-click an
+EXE, or open PowerShell in the extracted Automation_Package folder and run:
 
 1. Prepare records:
    .\PhoneGenerator.exe
@@ -120,11 +120,17 @@ then run these commands one at a time:
    .\UploadConsent.exe --email name@example.com
 
 Sign in with your own account and enter the OTP in the browser.
-On first launch, enter the customer name used by the administrator and the
-matching license key when prompted. The activation session is protected with
-Windows DPAPI under your Windows user profile. The signed validation cache
-and device binding data are also stored in %LOCALAPPDATA%\OWAutomation,
-not in this package.
+On first launch of any EXE, enter the licence details provided by the
+administrator:
+   Your Name: the customer name the administrator used
+   Licence Key: the matching key
+Then select "Activate licence". The same licence works with all three EXEs
+on this PC. It is bound to this PC; a copied key will not activate on another
+PC. The administrator can revoke the licence or reset its device binding.
+
+The activation session is protected with Windows DPAPI under your Windows
+user profile. The signed validation cache and device binding data are also
+stored in %LOCALAPPDATA%\OWAutomation, not in this package.
 Internet access is required for online license verification. The existing
 signed offline grace period remains available for up to 12 hours during
 temporary outages.
