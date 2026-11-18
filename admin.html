@@ -35,7 +35,7 @@
   .msg{margin-top:10px;font-size:14px;min-height:20px}
   .msg.err{color:var(--bad)} .msg.good{color:var(--ok)}
   .tablewrap{overflow-x:auto}
-  table{border-collapse:collapse;width:100%;min-width:980px}
+  table{border-collapse:collapse;width:100%;min-width:1320px}
   th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
   td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   tr:last-child td{border-bottom:0}
@@ -43,7 +43,7 @@
   td.nw{white-space:nowrap}
   .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
   .b-ok{background:var(--ok-bg);color:var(--ok)} .b-bad{background:var(--bad-bg);color:var(--bad)} .b-warn{background:var(--warn-bg);color:var(--warn)}
-  .actions{display:flex;flex-wrap:wrap;gap:6px;min-width:290px}
+  .actions{display:flex;flex-wrap:wrap;gap:6px;min-width:300px}
   .actions button{white-space:nowrap}
   .wrap{max-width:1240px}
   .empty{color:var(--muted);padding:18px 4px}
@@ -56,7 +56,7 @@
   <div class="topbar">
     <div>
       <h1>License Admin</h1>
-      <p class="sub">Keys banao, band karo, date badhao. Band karte hi user ki script agli check par ruk jati hai.</p>
+      <p class="sub">Generate, search, renew, revoke, and manage device bindings for customer licences.</p>
     </div>
     <button id="logout" class="small hidden">Logout</button>
   </div>
@@ -74,34 +74,34 @@
   <div id="app" class="hidden">
     <div class="card">
       <div class="row">
-        <label>User ka naam / note
-          <input type="text" id="label" placeholder="jaise Ravi (Delhi)" maxlength="80">
+        <label>Customer name
+          <input type="text" id="customerName" placeholder="Name used during activation" maxlength="80">
         </label>
-        <label style="max-width:150px">Kitne din (0 = hamesha)
+        <label style="max-width:170px">Validity in days (0 = no expiry)
           <input type="number" id="days" min="0" value="30">
         </label>
-        <label style="max-width:150px">Kitne computer
-          <input type="number" id="devices" min="1" max="50" value="1">
-        </label>
-        <button class="primary" id="createBtn">Naya key banao</button>
+        <button class="primary" id="createBtn">Generate new licence</button>
       </div>
       <div class="msg" id="createMsg"></div>
     </div>
 
     <div class="card">
       <div class="topbar">
-        <strong id="count">Keys</strong>
-        <button class="small" id="refresh">Refresh</button>
+        <strong id="count">Licences</strong>
+        <label style="max-width:300px">Search name or licence key
+          <input type="search" id="search" placeholder="Search all licences">
+        </label>
+        <button class="small" id="refresh">View all / Refresh</button>
       </div>
       <div class="tablewrap">
         <table>
           <thead>
-            <tr><th>Key</th><th>Note</th><th>Status</th><th>Expiry</th><th>Computers</th><th>Last use</th><th>Actions</th></tr>
+            <tr><th>Customer name</th><th>Licence key</th><th>Licence ID</th><th>Created</th><th>Expiry</th><th>Status</th><th>Activated device</th><th>Activation</th><th>Actions</th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
-      <div class="empty hidden" id="empty">Abhi koi key nahi hai. Upar se naya banao.</div>
+      <div class="empty hidden" id="empty">No licences found. Generate a new licence above.</div>
     </div>
   </div>
 </div>
@@ -110,6 +110,7 @@
 const $ = (id) => document.getElementById(id);
 let token = "";
 try { token = sessionStorage.getItem("adminToken") || ""; } catch (e) {}
+let searchTimer;
 
 function setMsg(id, text, kind) {
   const el = $(id);
@@ -166,11 +167,14 @@ async function act(label, fn) {
 function render(keys) {
   const body = $("rows");
   body.replaceChildren();
-  $("count").textContent = keys.length + (keys.length === 1 ? " key" : " keys");
+  $("count").textContent = keys.length + (keys.length === 1 ? " licence" : " licences");
   $("empty").classList.toggle("hidden", keys.length > 0);
   for (const k of keys) {
     const tr = document.createElement("tr");
     const enc = encodeURIComponent(k.key);
+
+    const tdName = document.createElement("td");
+    tdName.textContent = k.customerName || "—";
 
     const tdKey = document.createElement("td");
     const code = document.createElement("span");
@@ -178,24 +182,30 @@ function render(keys) {
     code.textContent = k.key;
     tdKey.append(code);
 
-    const tdNote = document.createElement("td");
-    tdNote.textContent = k.label || "—";
+    const tdId = document.createElement("td");
+    tdId.className = "keytext";
+    tdId.textContent = k.id || "—";
 
-    const tdStatus = document.createElement("td");
-    if (k.blocked) tdStatus.append(badge("Band", "b-bad"));
-    else if (k.expired) tdStatus.append(badge("Date khatam", "b-warn"));
-    else tdStatus.append(badge("Active", "b-ok"));
+    const tdCreated = document.createElement("td");
+    tdCreated.textContent = fmtDate(k.createdAt);
 
     const tdExp = document.createElement("td");
     tdExp.textContent = daysText(k.expiresAt);
 
-    const tdDev = document.createElement("td");
-    tdDev.textContent = k.devices.length + " / " + k.maxDevices;
+    const tdStatus = document.createElement("td");
+    const statusClass = k.status === "Revoked" ? "b-bad"
+      : k.status === "Expired" ? "b-warn"
+      : k.status === "Inactive" ? "b-warn" : "b-ok";
+    tdStatus.append(badge(k.status || "Inactive", statusClass));
 
-    const tdSeen = document.createElement("td");
-    tdSeen.textContent = k.lastSeen
-      ? new Date(k.lastSeen).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+    const tdDevice = document.createElement("td");
+    tdDevice.textContent = k.activatedDevice
+      ? k.activatedDevice.slice(0, 10) + "…"
       : "—";
+    if (k.activatedDevice) tdDevice.title = k.activatedDevice;
+
+    const tdActivation = document.createElement("td");
+    tdActivation.textContent = k.activationStatus || "Not activated";
 
     const tdAct = document.createElement("td");
     const box = document.createElement("div");
@@ -205,31 +215,34 @@ function render(keys) {
         try { await navigator.clipboard.writeText(k.key); } catch (e) { prompt("Key copy karo:", k.key); }
       }),
       k.blocked
-        ? btn("Chalu karo", "", () => act("Unblock", () => api("POST", "/api/admin/keys/" + enc + "/unblock")))
-        : btn("Band karo", "danger", () => act("Block", () => api("POST", "/api/admin/keys/" + enc + "/block"))),
-      btn("+30 din", "", () => act("Extend", () => api("POST", "/api/admin/keys/" + enc + "/extend", { days: 30 }))),
-      btn("Hamesha", "", () => act("No expiry", () => api("POST", "/api/admin/keys/" + enc + "/no-expiry"))),
-      btn("Reset PC", "", () => {
-        if (confirm("Is key ke saved computers hata dein? Phir ye kisi naye computer par chal jayegi.")) {
-          act("Reset", () => api("POST", "/api/admin/keys/" + enc + "/reset-devices"));
+        ? btn("Unrevoke", "", () => act("Unrevoke", () => api("POST", "/api/admin/keys/" + enc + "/unrevoke")))
+        : btn("Revoke", "danger", () => act("Revoke", () => api("POST", "/api/admin/keys/" + enc + "/revoke"))),
+      btn("Renew +30 days", "", () => act("Renew", () => api("POST", "/api/admin/keys/" + enc + "/extend", { days: 30 }))),
+      btn("No expiry", "", () => act("No expiry", () => api("POST", "/api/admin/keys/" + enc + "/no-expiry"))),
+      btn("Reset device", "", () => {
+        if (confirm("Unbind this licence from its current device? It can then be activated on one device again.")) {
+          act("Reset device", () => api("POST", "/api/admin/keys/" + enc + "/reset-devices"));
         }
       }),
       btn("Delete", "danger", () => {
-        if (confirm("Ye key hamesha ke liye delete karni hai? Is user ki script chalni band ho jayegi.")) {
+        if (confirm("Permanently delete this licence record? This cannot be undone.")) {
           act("Delete", () => api("DELETE", "/api/admin/keys/" + enc));
         }
       })
     );
     tdAct.append(box);
 
-    for (const td of [tdKey, tdStatus, tdExp, tdDev, tdSeen]) td.className = "nw";
-    tr.append(tdKey, tdNote, tdStatus, tdExp, tdDev, tdSeen, tdAct);
+    for (const td of [tdKey, tdId, tdCreated, tdStatus, tdExp, tdDevice, tdActivation]) {
+      td.classList.add("nw");
+    }
+    tr.append(tdName, tdKey, tdId, tdCreated, tdExp, tdStatus, tdDevice, tdActivation, tdAct);
     body.append(tr);
   }
 }
 
 async function load() {
-  render(await api("GET", "/api/admin/keys"));
+  const query = $("search").value.trim();
+  render(await api("GET", "/api/admin/keys" + (query ? "?q=" + encodeURIComponent(query) : "")));
 }
 
 function showApp(on) {
@@ -256,6 +269,10 @@ async function login() {
 $("loginBtn").addEventListener("click", login);
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 $("refresh").addEventListener("click", () => act("Refresh", load));
+$("search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => act("Search", load), 200);
+});
 $("logout").addEventListener("click", () => {
   token = "";
   try { sessionStorage.removeItem("adminToken"); } catch (e) {}
@@ -265,12 +282,11 @@ $("logout").addEventListener("click", () => {
 $("createBtn").addEventListener("click", async () => {
   try {
     const k = await api("POST", "/api/admin/keys", {
-      label: $("label").value.trim(),
+      customerName: $("customerName").value.trim(),
       days: Number($("days").value) || 0,
-      maxDevices: Number($("devices").value) || 1,
     });
-    $("label").value = "";
-    setMsg("createMsg", "Key ban gayi: " + k.key, "good");
+    $("customerName").value = "";
+    setMsg("createMsg", "Licence created: " + k.key, "good");
     await load();
   } catch (e) {
     setMsg("createMsg", e.message, "err");

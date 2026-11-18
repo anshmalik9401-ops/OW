@@ -41,9 +41,12 @@ function fileStore() {
     if (fs.existsSync(DATA_FILE)) {
         db = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
     }
+    if (!Array.isArray(db.keys)) db.keys = [];
+    if (!db.config || typeof db.config !== "object") db.config = {};
 
     const save = () => {
-        const temp = DATA_FILE + ".tmp";
+        fs.mkdirSync(path.dirname(path.resolve(DATA_FILE)), { recursive: true });
+        const temp = DATA_FILE + "." + process.pid + ".tmp";
         fs.writeFileSync(temp, JSON.stringify(db, null, 2));
         fs.renameSync(temp, DATA_FILE);
     };
@@ -82,6 +85,28 @@ function fileStore() {
             return db.keys[i];
         },
 
+        async bindDevice(key, device, now) {
+            const record = db.keys.find(k => k.key === key);
+            if (!record) return { record: null, bound: false };
+            if (record.blocked) {
+                return { record, bound: false, reason: "This licence has been revoked." };
+            }
+            if (record.expiresAt && record.expiresAt < now) {
+                return { record, bound: false, reason: "This licence has expired." };
+            }
+            const boundDevice = (record.devices || [])[0];
+            if (boundDevice && boundDevice !== device) {
+                return {
+                    record,
+                    bound: false,
+                    reason: "This licence is already activated on another device."
+                };
+            }
+            Object.assign(record, { devices: [device], lastSeen: now });
+            save();
+            return { record, bound: true };
+        },
+
         async deleteKey(key) {
             const old = db.keys.length;
             db.keys = db.keys.filter(k => k.key !== key);
@@ -105,6 +130,10 @@ async function mongoStore(uri) {
     const config = db.collection("config");
 
     await keys.createIndex({ key: 1 }, { unique: true });
+    await keys.createIndex(
+        { id: 1 },
+        { unique: true, partialFilterExpression: { id: { $type: "string" } } }
+    );
 
     const clean = doc => {
         if (!doc) return null;
@@ -143,6 +172,46 @@ async function mongoStore(uri) {
         async updateKey(key, patch) {
             await keys.updateOne({ key }, { $set: patch });
             return clean(await keys.findOne({ key }));
+        },
+
+        async bindDevice(key, device, now) {
+            const result = await keys.updateOne(
+                {
+                    key,
+                    blocked: { $ne: true },
+                    $and: [
+                        {
+                            $or: [
+                                { expiresAt: null },
+                                { expiresAt: { $exists: false } },
+                                { expiresAt: { $gte: now } }
+                            ]
+                        },
+                        {
+                            $or: [
+                                { devices: { $exists: false } },
+                                { devices: { $size: 0 } },
+                                { "devices.0": device }
+                            ]
+                        }
+                    ]
+                },
+                { $set: { devices: [device], lastSeen: now } }
+            );
+            const record = clean(await keys.findOne({ key }));
+            if (result.matchedCount) return { record, bound: true };
+            if (!record) return { record: null, bound: false };
+            if (record.blocked) {
+                return { record, bound: false, reason: "This licence has been revoked." };
+            }
+            if (record.expiresAt && record.expiresAt < now) {
+                return { record, bound: false, reason: "This licence has expired." };
+            }
+            return {
+                record,
+                bound: false,
+                reason: "This licence is already activated on another device."
+            };
         },
 
         async deleteKey(key) {
@@ -190,6 +259,18 @@ function newKey() {
     return `LIC-${part()}-${part()}-${part()}-${part()}`;
 }
 
+function normalizeName(value) {
+    return String(value || "")
+        .normalize("NFKC")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function normalizeKey(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
 function safeEqual(a, b) {
     const x = Buffer.from(String(a));
     const y = Buffer.from(String(b));
@@ -199,15 +280,28 @@ function safeEqual(a, b) {
 
 function publicView(k) {
     const now = Date.now();
+    const devices = Array.isArray(k.devices) ? k.devices : [];
+    const status = k.blocked
+        ? "Revoked"
+        : k.expiresAt && k.expiresAt < now
+            ? "Expired"
+            : devices.length
+                ? "Active"
+                : "Inactive";
 
     return {
+        id: k.id,
         key: k.key,
-        label: k.label,
+        customerName: k.customerName || k.label || "",
+        label: k.customerName || k.label || "",
         blocked: !!k.blocked,
         expiresAt: k.expiresAt,
         expired: !!(k.expiresAt && k.expiresAt < now),
-        maxDevices: k.maxDevices,
-        devices: k.devices || [],
+        status,
+        activationStatus: devices.length ? "Activated" : "Not activated",
+        activatedDevice: devices[0] || null,
+        maxDevices: 1,
+        devices,
         createdAt: k.createdAt,
         lastSeen: k.lastSeen || null
     };
@@ -225,6 +319,18 @@ async function main() {
     const store = MONGODB_URI
         ? await mongoStore(MONGODB_URI)
         : fileStore();
+
+    for (const record of await store.listKeys()) {
+        const customerName = String(record.customerName || record.label || "")
+            .normalize("NFKC")
+            .trim()
+            .replace(/\s+/g, " ");
+        const patch = {};
+        if (!record.id) patch.id = crypto.randomUUID();
+        if (record.customerName !== customerName) patch.customerName = customerName;
+        if (record.label !== customerName) patch.label = customerName;
+        if (Object.keys(patch).length) await store.updateKey(record.key, patch);
+    }
 
     const { privateKey, publicKeyB64 } =
         await loadSigningKeys(store);
@@ -303,54 +409,57 @@ async function main() {
             });
         }
 
-        const { key, device, nonce } = req.body || {};
+        const { key, customerName, device, nonce } = req.body || {};
 
         if (![key, device, nonce].every(
             v => typeof v === "string" &&
             v.length > 0 &&
             v.length < 200
-        )) {
+        ) || (customerName !== undefined && (
+            typeof customerName !== "string" ||
+            customerName.trim().length === 0 ||
+            customerName.length > 80
+        ))) {
             return res.status(400).json({
                 ok: false,
                 reason: "Invalid request"
             });
         }
 
-        const rec = await store.findKey(key.trim());
+        const normalizedKey = normalizeKey(key);
+        const rec = await store.findKey(normalizedKey);
 
         const deny = reason => res.json({
             ok: false,
             reason
         });
 
-        if (!rec) return deny("License key galat hai");
-        if (rec.blocked) return deny("License blocked hai");
+        if (!rec) return deny("Invalid licence key.");
+        if (rec.blocked) return deny("This licence has been revoked.");
+
+        const recordedName = rec.customerName || rec.label || "";
+        const devices = Array.isArray(rec.devices) ? rec.devices : [];
+        const boundDevice = devices[0] || "";
+        if (customerName !== undefined) {
+            if (normalizeName(customerName) !== normalizeName(recordedName)) {
+                return deny("Name and licence key do not match.");
+            }
+        } else if (boundDevice !== device) {
+            return deny("Enter the customer name to activate this licence.");
+        }
 
         const now = Date.now();
-
-        if (rec.expiresAt && rec.expiresAt < now) {
-            return deny("License expire ho gaya");
+        const binding = await store.bindDevice(rec.key, device, now);
+        if (!binding.bound) {
+            return deny(binding.reason || "Invalid licence key.");
         }
-
-        const devices = rec.devices || [];
-
-        if (!devices.includes(device)) {
-            if (devices.length >= (rec.maxDevices || 1)) {
-                return deny("License dusre computer par already use ho raha hai");
-            }
-
-            devices.push(device);
-        }
-
-        await store.updateKey(rec.key, {
-            devices,
-            lastSeen: now
-        });
 
         return res.json({
             ok: true,
             ...sign({
+                licenseId: binding.record.id,
                 key: rec.key,
+                customerName: recordedName,
                 device,
                 nonce,
                 ts: now,
@@ -359,36 +468,63 @@ async function main() {
         });
     }));
 
+    app.post("/api/admin/keys/:key/revoke", admin, asyncRoute(async (req, res) => {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
+            blocked: true
+        });
+
+        k ? res.json(publicView(k))
+          : res.status(404).json({ error: "Key not found" });
+    }));
+
+    app.post("/api/admin/keys/:key/unrevoke", admin, asyncRoute(async (req, res) => {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
+            blocked: false
+        });
+
+        k ? res.json(publicView(k))
+          : res.status(404).json({ error: "Key not found" });
+    }));
+
     // Admin APIs
 
     app.get("/api/admin/keys", admin, asyncRoute(async (req, res) => {
-        res.json((await store.listKeys()).map(publicView));
+        const query = normalizeName(req.query.q || "");
+        const keys = await store.listKeys();
+        res.json(keys
+            .filter(key => !query ||
+                normalizeName(key.customerName || key.label).includes(query) ||
+                normalizeKey(key.key).includes(normalizeKey(req.query.q)))
+            .map(publicView));
     }));
 
     app.post("/api/admin/keys", admin, asyncRoute(async (req, res) => {
-        const { label, days, maxDevices } = req.body || {};
+        const { customerName, label, days } = req.body || {};
+        const name = String(customerName || label || "")
+            .normalize("NFKC")
+            .trim()
+            .replace(/\s+/g, " ");
 
         const d = Number(days);
-        const devices = Number(maxDevices) || 1;
 
-        if (!Number.isFinite(d) || d < 0 || d > 3650) {
+        if (!name || name.length > 80) {
+            return res.status(400).json({ error: "Customer name is required" });
+        }
+
+        if (!Number.isInteger(d) || d < 0 || d > 3650) {
             return res.status(400).json({
                 error: "Invalid expiry days"
             });
         }
 
-        if (!Number.isInteger(devices) || devices < 1 || devices > 50) {
-            return res.status(400).json({
-                error: "Invalid device limit"
-            });
-        }
-
         const doc = {
+            id: crypto.randomUUID(),
             key: newKey(),
-            label: String(label || "").slice(0, 80),
+            customerName: name,
+            label: name,
             blocked: false,
             expiresAt: d > 0 ? Date.now() + d * 86400000 : null,
-            maxDevices: devices,
+            maxDevices: 1,
             devices: [],
             createdAt: Date.now(),
             lastSeen: null
@@ -400,7 +536,7 @@ async function main() {
     }));
 
     app.post("/api/admin/keys/:key/block", admin, asyncRoute(async (req, res) => {
-        const k = await store.updateKey(req.params.key, {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
             blocked: true
         });
 
@@ -409,7 +545,7 @@ async function main() {
     }));
 
     app.post("/api/admin/keys/:key/unblock", admin, asyncRoute(async (req, res) => {
-        const k = await store.updateKey(req.params.key, {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
             blocked: false
         });
 
@@ -418,7 +554,7 @@ async function main() {
     }));
 
     app.post("/api/admin/keys/:key/extend", admin, asyncRoute(async (req, res) => {
-        const rec = await store.findKey(req.params.key);
+        const rec = await store.findKey(normalizeKey(req.params.key));
 
         if (!rec) {
             return res.status(404).json({ error: "Key not found" });
@@ -442,7 +578,7 @@ async function main() {
     }));
 
     app.post("/api/admin/keys/:key/no-expiry", admin, asyncRoute(async (req, res) => {
-        const k = await store.updateKey(req.params.key, {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
             expiresAt: null
         });
 
@@ -451,7 +587,7 @@ async function main() {
     }));
 
     app.post("/api/admin/keys/:key/reset-devices", admin, asyncRoute(async (req, res) => {
-        const k = await store.updateKey(req.params.key, {
+        const k = await store.updateKey(normalizeKey(req.params.key), {
             devices: []
         });
 
@@ -460,7 +596,7 @@ async function main() {
     }));
 
     app.delete("/api/admin/keys/:key", admin, asyncRoute(async (req, res) => {
-        const deleted = await store.deleteKey(req.params.key);
+        const deleted = await store.deleteKey(normalizeKey(req.params.key));
 
         deleted
             ? res.json({ ok: true })

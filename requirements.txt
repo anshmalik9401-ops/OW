@@ -1,0 +1,7 @@
+cryptography
+playwright
+pyperclip
+openpyxl
+xlrd
+python-dotenv
+pyinstaller

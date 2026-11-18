@@ -1,0 +1,17 @@
+.env
+.license_cache
+license.key
+.device_id
+.activation
+licenses.json
+data.txt
+node_modules/
+__pycache__/
+*.py[cod]
+build/
+dist/
+release/
+output/
+processed_numbers.json
+OW_License_Updated_Project.zip
+*.tmp

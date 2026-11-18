@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin | List Registered Person</title>
+<style>
+  :root{
+    --primary:#0b7fd4; --accent:#f59e0b; --dark:#2f2f2f; --dark2:#262626; --darker:#1c1c1c;
+    --light:#ffffff; --border:#222; --text:#222; --muted:#8a94a6;
+    --radius:0px; --hbg:#ffffff; --htext:#222; --font:"Segoe UI",Arial,sans-serif;
+    --thbg:#d9d9d9; --panelhead:#2f2f2f;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font);background:#fff;color:var(--text);font-size:14px}
+  #page{zoom:0.6}
+  a{text-decoration:none;color:inherit}
+  ul{list-style:none}
+  .container{max-width:1800px;margin:0 auto;padding:0 28px}
+
+  header{background:var(--hbg);color:var(--htext);border-bottom:1px solid #cfd8e3}
+  .nav{display:flex;align-items:center;height:66px;gap:22px}
+  .logo{display:flex;align-items:center;gap:8px;min-width:210px}
+  .logo-mark{width:42px;height:42px;border-radius:var(--radius);background:var(--primary);display:grid;place-items:center}
+  .logo-mark svg{width:24px;height:24px;fill:#fff}
+  .logo-text{font-size:24px;font-weight:700;line-height:1;letter-spacing:-.3px;color:var(--primary);white-space:nowrap}
+  .logo-text small{font-size:13px;font-weight:600;opacity:.8}
+  .region{opacity:.55;font-weight:700;font-size:15px;margin-right:auto;padding-left:10px;white-space:nowrap}
+  .link{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;white-space:nowrap}
+  .link svg{width:15px;height:15px;fill:currentColor}
+  .btn{padding:11px 11px;border-radius:calc(var(--radius) / 2);font-weight:700;font-size:14px;color:#fff;display:inline-block;letter-spacing:.2px;white-space:nowrap}
+  .btn-1{background:var(--primary)} .btn-2{background:var(--accent)}
+  .btn .free{color:#ffeb3b}
+  .menu{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+  .menu i{display:block;width:26px;height:3px;background:currentColor}
+  .menu small{font-size:8px;opacity:.6;font-weight:700}
+
+  main{padding:30px 0 100px}
+  .layout{display:flex;gap:20px;align-items:flex-start}
+
+  .sidebar{width:260px;border:1px solid #ccc;flex-shrink:0}
+  .sidebar h3{background:var(--panelhead);color:#fff;padding:12px 10px;font-size:23px}
+  .sidebar li a{display:flex;align-items:stretch;border-bottom:1px solid #ddd;font-size:18px}
+  .sidebar li a i{width:34px;border-right:1px solid #ddd;display:grid;place-items:center;background:#fafafa}
+  .sidebar li a i::after{content:"";border-left:9px solid #555;border-top:7px solid transparent;border-bottom:7px solid transparent}
+  .sidebar li a span{padding:14px 10px;flex:1}
+  .sidebar li a.active span{font-weight:700}
+
+  .panel{flex:1;min-width:0;overflow-x:auto}
+  .panel-head{background:var(--panelhead);color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+  .panel-head h2{font-size:26px}
+  .search{display:flex;align-items:center;gap:6px}
+  .search label{font-weight:700;font-size:15px}
+  .search input{padding:2px 8px;border:1px solid #ccc;width:110px;height:24px;font-size:13px;outline:none}
+  .search button{padding:2px 14px;height:24px;border:1px solid #aaa;background:#eee;font-size:13px;line-height:1;cursor:pointer;border-radius:calc(var(--radius) / 2)}
+
+  table{border-collapse:collapse;width:100%;border:2px solid #000;background:#fff}
+  th{background:var(--thbg);text-align:left;padding:12px 14px;font-weight:600;font-size:17px;border:1px solid #000;white-space:nowrap}
+  td{padding:14px;border:1px solid #000;font-size:18px;height:56px;white-space:nowrap}
+  td.num{text-align:left}
+  mark.phone-number{background:#ffeb3b;color:#111;padding:1px 6px;font-weight:700}
+  mark{background:#ffeb3b;padding:0 2px}
+  .del{border:0;background:none;cursor:pointer;font-size:30px;font-weight:900;line-height:1}
+
+  .app-bar{background:#f7f7f7;border-top:1px solid #e3e3e3}
+  .app-bar .container{display:flex;align-items:center;justify-content:space-between;padding-top:7px;padding-bottom:7px}
+  .app-left{display:flex;align-items:center;gap:10px}
+  .app-left span{font-size:19px;color:#444;padding-left:10px;padding-right:4px}
+  .store{display:flex;align-items:center;gap:8px;background:#000;color:#fff;padding:6px 10px;border-radius:6px;border:1px solid #666}
+  .store svg{width:22px;height:22px;fill:#fff}
+  .store small{display:block;font-size:8px;opacity:.85}
+  .store b{font-size:14px;line-height:1}
+  .social{display:flex;gap:8px;padding-top:18px}
+  .social a{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+  .s1{background:#3b5998}.s2{background:#f57d00}.s3{background:#dd4b39}.s4{background:#cb2027}.s5{background:#1da1f2}.s6{background:#e62117}
+
+  .footer-main{background:var(--dark);color:#ddd;padding:20px 0 14px}
+  .footer-grid{display:grid;grid-template-columns:1fr 2.2fr 1.5fr 1.1fr 1fr;gap:0}
+  .footer-grid>div{padding:0 16px;border-left:1px dashed #666}
+  .footer-grid>div:first-child{border-left:0;padding-left:10px}
+  .footer-grid h4{color:#fff;font-size:18px;margin-bottom:14px}
+  .footer-grid li{margin-bottom:11px}
+  .footer-grid a{color:#b5b5b5;font-size:15.5px}
+  .footer-grid a:hover{color:var(--accent)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+
+  .ventures{background:#fff;padding:14px 0;border-top:1px solid #ddd}
+  .ventures .container{display:flex;justify-content:space-around;align-items:center;gap:10px}
+  .v-item{display:flex;align-items:center;gap:8px;font-weight:700;color:#222;font-size:17px}
+  .v-item i{width:36px;height:36px;border-radius:var(--radius);display:grid;place-items:center;color:#fff;font-style:normal;font-size:16px}
+  .v-item small{display:block;font-size:9px;color:#777;font-weight:400}
+  .copy{background:#303030;color:#fff;padding:0;font-size:14px}
+  .copy .container{display:flex;justify-content:space-between;align-items:center;height:30px}
+  .group{background:#e60000;color:#fff;font-weight:700;padding:6px 14px 3px;font-size:15px;align-self:flex-end;clip-path:polygon(0 0,100% 0,100% 100%,0 100%);position:relative;top:0}
+  .group small{font-weight:400;font-size:11px;margin-left:4px}
+
+  body[data-style="2"]{--radius:10px;--font:Georgia,"Times New Roman",serif;--hbg:var(--dark);--htext:#fff;--panelhead:var(--primary);--thbg:#e8eef5}
+  body[data-style="2"] .logo-text{color:#fff}
+  body[data-style="3"]{--radius:20px;--font:"Trebuchet MS",Verdana,sans-serif;--hbg:linear-gradient(90deg,var(--primary),var(--accent));--htext:#fff;--panelhead:var(--dark);--thbg:#f0e9dc}
+  body[data-style="3"] .logo-text{color:#fff}
+  body[data-style="3"] .logo-mark{background:rgba(255,255,255,.25)}
+  body[data-style="4"]{--radius:8px;--font:Verdana,Geneva,sans-serif;--hbg:#fff;--panelhead:linear-gradient(90deg,var(--dark),var(--primary));--thbg:#e9f1ff}
+  body[data-style="4"] header{border-bottom:5px solid var(--primary)}
+  body[data-style="5"]{--radius:0px;--font:Tahoma,Arial,sans-serif;--hbg:#f6f6f6;--panelhead:var(--primary);--thbg:#ececec}
+  body[data-style="5"] header{border-bottom:3px solid var(--accent)}
+  body[data-style="5"] .sidebar h3{background:var(--accent)}
+  body[data-style="6"]{--radius:14px;--font:"Courier New",monospace;--hbg:#111;--htext:#fff;--panelhead:#111;--thbg:var(--accent)}
+  body[data-style="6"] .logo-text{color:var(--accent)}
+  body[data-style="6"] th{color:#111;font-weight:700}
+  body[data-style="7"]{--radius:4px;--font:Cambria,Georgia,serif;--hbg:var(--dark);--htext:#fff;--panelhead:var(--accent);--thbg:#efe9dd}
+  body[data-style="7"] .logo-text{color:#fff}
+  body[data-style="7"] .sidebar h3{background:var(--primary)}
+  body[data-style="8"]{--radius:12px;--font:Calibri,"Segoe UI",sans-serif;--hbg:#fff;--panelhead:var(--primary);--thbg:#f2f4f8}
+  body[data-style="8"] header{border-bottom:4px solid var(--accent)}
+  body[data-style="8"] .sidebar h3{background:linear-gradient(90deg,var(--primary),var(--dark))}
+  body[data-style="9"]{--radius:6px;--font:Arial,Helvetica,sans-serif;--hbg:linear-gradient(90deg,var(--dark),var(--primary));--htext:#fff;--panelhead:var(--dark);--thbg:var(--primary)}
+  body[data-style="9"] .logo-text{color:#fff}
+  body[data-style="9"] .logo-mark{background:rgba(255,255,255,.2)}
+  body[data-style="9"] .btn-1{background:var(--accent)}
+  body[data-style="9"] .btn-2{background:rgba(255,255,255,.25)}
+  body[data-style="9"] th{color:#fff}
+  body[data-style="10"]{--radius:16px;--font:"Segoe UI",Tahoma,sans-serif;--hbg:var(--primary);--htext:#fff;--panelhead:var(--dark);--thbg:#e8e8e8}
+  body[data-style="10"] .logo-text{color:#fff}
+  body[data-style="10"] .logo-mark{background:var(--accent)}
+  body[data-style="10"] .btn-1{background:var(--accent)}
+  body[data-style="10"] .btn-2{background:var(--dark)}
+
+  #ctl{position:fixed;right:14px;bottom:14px;background:#111;color:#fff;padding:10px 12px;border-radius:10px;display:flex;gap:8px;align-items:center;z-index:99;font:600 13px Arial;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+  #ctl select{padding:6px 8px;border-radius:6px;border:0;font-weight:700}
+  #ctl button{padding:6px 12px;border:0;border-radius:6px;background:#f59e0b;color:#fff;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body data-style="1">
+
+<div id="page">
+
+<header>
+  <div class="container nav">
+    <a href="#" class="logo">
+      <div class="logo-mark"><svg viewBox="0 0 24 24"><path id="logoPath" d=""/></svg></div>
+      <div class="logo-text"><span id="brandName">Brand</span><small id="brandTag">.com</small></div>
+    </a>
+    <span class="region">All India &#9662;</span>
+    <a class="link"><svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4 0-8 2-8 5v2h16v-2c0-3-4-5-8-5z"/></svg><span id="nl1">LOGIN</span></a>
+    <a class="link"><svg viewBox="0 0 24 24"><circle cx="10" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M13 13l6 7" stroke="currentColor" stroke-width="3"/></svg><span id="nl2">VERIFIED</span></a>
+    <a href="#" class="btn btn-1"><span id="b1">POST</span> <span class="free" id="free">FREE</span></a>
+    <a href="#" class="btn btn-2" id="b2">POST</a>
+    <div class="menu"><i></i><i></i><i></i><small>MENU</small></div>
+  </div>
+</header>
+
+<main>
+  <div class="container layout">
+    <aside class="sidebar">
+      <h3>Admin Menu</h3>
+      <ul>
+        <li><a href="#" class="active"><i></i><span>List Registered Person</span></a></li>
+        <li><a href="#"><i></i><span>Change Password</span></a></li>
+        <li><a href="#"><i></i><span>Logout</span></a></li>
+      </ul>
+    </aside>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>List Registered Person</h2>
+        <form class="search" id="searchForm">
+          <label for="q">Search</label>
+          <input type="text" id="q">
+          <button type="submit">GO</button>
+        </form>
+      </div>
+      <table>
+        <thead><tr><th style="width:22%">Name</th><th style="width:18%">Mobile</th><th style="width:36%">Email / Details</th><th style="width:16%">Date</th><th style="width:8%"></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<div class="app-bar">
+  <div class="container">
+    <div class="app-left">
+      <span>Download Mobile App :</span>
+      <a href="#" class="store"><svg viewBox="0 0 24 24"><path d="M4 2.5v19l10-9.5zM15.4 13.4 18 16l3-1.7c1-.6 1-1.9 0-2.5L18 10l-2.6 2.6zM5.5 2.1l10.2 9.4 2.5-2.4z"/></svg><div><small>ANDROID APP ON</small><b>Google play</b></div></a>
+      <a href="#" class="store"><svg viewBox="0 0 24 24"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9s-2-.9-3.3-.9C6 7 4.4 8 3.6 9.5c-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.2.8 2.1-1.2 2.9-2.4c.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.6-1-2.6-4zM14 5.3c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg><div><small>Available on the</small><b>App Store</b></div></a>
+    </div>
+    <div class="social">
+      <a href="#" class="s1">f</a><a href="#" class="s2">B</a><a href="#" class="s3">G+</a><a href="#" class="s4">P</a><a href="#" class="s5">t</a><a href="#" class="s6">&#9654;</a>
+    </div>
+  </div>
+</div>
+
+<footer class="footer-main">
+  <div class="container footer-grid" id="footGrid"></div>
+</footer>
+
+<div class="ventures"><div class="container" id="ventures"></div></div>
+
+<div class="copy">
+  <div class="container">
+    <span id="copy">All Rights Reserved</span>
+    <span class="group" id="group">Brand <small>Group Venture</small></span>
+    <span>Web Design by Your Name</span>
+  </div>
+</div>
+
+</div>
+
+<div id="ctl">
+  <span>Category:</span>
+  <select id="catSelect"></select>
+  <button id="shuffleBtn">&#8635; Shuffle</button>
+</div>
+
+<script>
+const ROWS = [];
+
+const CATEGORIES = {
+  realestate: {
+    label:"Real Estate", icon:"M12 2 2 11h3v9h5v-6h4v6h5v-9h3z", mid:"Real Estate",
+    pre:["Skyline","Urban","Greenfield","Prime","Orbit","Maple","Cedar","Horizon","Landmark","Evergreen","Aster","Sunrise"],
+    suf:["Builders","Homes","Estates","Realty","Properties","Developers"],
+    nav:["LOGIN","VERIFIED BUYERS"], act:["POST PROPERTY","POST REQUIREMENT"],
+    cols:[
+      ["General Links",["Home","About Us","Contact Us","Feedback","Complaints","Terms & Conditions","Testimonials","Sitemap"]],
+      ["Real Estate Links",["Download Mobile Apps","Property Leads","Real Estate Services","FAQ","Property for Sale","Builders in India","Post Your Property Free","New Projects","Real Estate Agents","Post Your Project","Register With Us","Property for Rent","Post Your Requirement","Advertise With Us"]],
+      ["Property in India",["New Delhi","Gurgaon","Bangalore","Kolkata","Pune","Thane","Ghaziabad","Bhiwadi","Mumbai","Noida","Ahmedabad","Chennai","Hyderabad","Greater Noida","Faridabad","Bhubaneswar"]],
+      ["Property by Type",["Flats for Sale","Villas for Sale","Builder Floor","Farm House for Sale","Individual House","Serviced Apartments","Office Space for Sale","Banquet Hall"]],
+      ["Latest Projects",["Pune","Bangalore","Mumbai","Gurgaon","Noida","Vadodara","Thane","Nashik"]]
+    ]
+  },
+  banking: {
+    label:"Banking", icon:"M12 2 2 8v2h20V8zM4 11v8H2v2h20v-2h-2v-8h-3v8h-3v-8h-4v8H7v-8z", mid:"Banking",
+    pre:["Crest","Unity","Pioneer","Harbor","Meridian","Ardent","Sterling","Vertex","Northwind","Keystone","Alpine","Trust"],
+    suf:["Bank","Co-operative Bank","Savings Bank","Finance Bank"],
+    nav:["NET BANKING","BRANCHES"], act:["OPEN ACCOUNT","APPLY LOAN"],
+    cols:[
+      ["General Links",["Home","About Bank","Contact Us","Feedback","Complaints","Terms & Conditions","Careers","Sitemap"]],
+      ["Banking Links",["Savings Account","Current Account","Fixed Deposit","Recurring Deposit","Demat Account","Locker","Forex","Mobile Banking","Home Loan","Personal Loan","Car Loan","Gold Loan","Education Loan","Business Loan"]],
+      ["Cards & Payments",["Debit Card","Credit Card","UPI","BBPS","FASTag","Prepaid Card","Cheque Status","NEFT / RTGS","IMPS","Bill Pay","Recharge","Statements","Passbook","Remittance"]],
+      ["Services",["ATM Locator","Branch Locator","Customer Care","Grievance","Security Tips","Interest Rates","Charges","Forms"]],
+      ["Quick Links",["Open Account","Apply Loan","Track Request","Download App","Offers","Notices","Careers","FAQ"]]
+    ]
+  },
+  insurance: {
+    label:"Insurance", icon:"M12 1 3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5zm-1 15-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10z", mid:"Insurance",
+    pre:["SafeLife","Shield","Aegis","Secura","Guardian","Assure","Protego","Haven","Bluecover","Evercare","Lifeline","Covera"],
+    suf:["Insurance","Assurance","Life","General Insurance","Health Cover"],
+    nav:["LOGIN","CLAIM STATUS"], act:["GET QUOTE","RENEW POLICY"],
+    cols:[
+      ["General Links",["Home","About Us","Contact Us","Feedback","Complaints","Terms & Conditions","Careers","Sitemap"]],
+      ["Insurance Links",["Life Insurance","Health Insurance","Term Plan","Motor Insurance","Travel Insurance","Home Insurance","Business Insurance","Renew Policy","Pay Premium","Track Claim","Download Policy","Policy Status","Calculators","Find Hospital"]],
+      ["Plans by Need",["Family Cover","Senior Citizens","Child Plan","Retirement Plan","Savings Plan","Cancer Cover","Car Cover","Bike Cover","Group Cover","Critical Illness","Accident Cover","Pet Cover","Student Plan","Women Plan"]],
+      ["For Agents",["Become an Agent","Agent Login","Brokers","Partners","Commission","Training","Downloads","Support"]],
+      ["Support",["Customer Care","Grievance","Claim Process","FAQ","Policy Documents","Disclosures","Offers","Blog"]]
+    ]
+  },
+  finance: {
+    label:"Financial Products", icon:"M3 17h3v4H3zm5-6h3v10H8zm5-5h3v15h-3zm5-4h3v19h-3z", mid:"Finance",
+    pre:["Finova","Capitra","Wealthora","Zenith","Moneta","Quantix","Primeleaf","Growwise","Fundora","Arthaa","Lumen","Cashly"],
+    suf:["Finserv","Capital","Finance","Wealth","Invest","Credit"],
+    nav:["LOGIN","CALCULATORS"], act:["APPLY LOAN","START INVESTING"],
+    cols:[
+      ["General Links",["Home","About Us","Contact Us","Feedback","Complaints","Terms & Conditions","Careers","Sitemap"]],
+      ["Finance Links",["Personal Loan","Business Loan","Home Loan","Gold Loan","Loan Against Shares","Instant Loan","EMI Calculator","Mutual Funds","Stocks","IPO","Bonds","Fixed Deposits","SIP Calculator","Demat Account"]],
+      ["Tools & Research",["Credit Score","Check Eligibility","Compare Loans","Tax Planner","Market News","Research","Screeners","Watchlist","Portfolio","Reports","Alerts","Learn","Webinars","Blog"]],
+      ["Invest By Goal",["Retirement","Child Education","Wealth Creation","Tax Saving","Emergency Fund","Home Down Payment","Travel Fund","Short Term"]],
+      ["Support",["Customer Care","Grievance","FAQ","Security","Charges","Disclosures","Offers","Partners"]]
+    ]
+  },
+  cards: {
+    label:"Credit Cards", icon:"M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4H4V6h16zM4 12h16v6H4z", mid:"Cards",
+    pre:["Zeta","Rewardly","Plumeria","Nova","Aurora","Luxe","Orbitpay","Velvet","Cardinal","Spendly","Prism","Kite"],
+    suf:["Card","Pay","Rewards","Credit","Plus"],
+    nav:["LOGIN","OFFERS"], act:["APPLY CARD","CHECK ELIGIBILITY"],
+    cols:[
+      ["General Links",["Home","About Us","Contact Us","Feedback","Complaints","Terms & Conditions","Careers","Sitemap"]],
+      ["Card Links",["Rewards Card","Travel Card","Cashback Card","Fuel Card","Shopping Card","Premium Card","Business Card","Pay Bill","Card Statement","Block Card","Set PIN","Limit Increase","EMI Convert","Reward Points"]],
+      ["Offers",["Shopping","Travel","Dining","Movies","Fuel","Bill Pay","Grocery","Online Deals","Weekend Offers","Festival Offers","Partner Brands","Gift Cards","Cashback","Vouchers"]],
+      ["Card by Type",["Lifetime Free","Low Interest","Student Card","Salaried Card","Self Employed","Senior Card","Secured Card","Co-branded"]],
+      ["Support",["Customer Care","Grievance","FAQ","Security Tips","Charges","Disclosures","Lost Card","Downloads"]]
+    ]
+  }
+};
+
+const THEMES = [
+  ["#0b7fd4","#f59e0b","#2b2f3a","#262a33"], ["#10b981","#f97316","#17302a","#12261f"],
+  ["#8b5cf6","#ec4899","#2a2140","#201a33"], ["#ef4444","#f59e0b","#3a2020","#2e1919"],
+  ["#0ea5e9","#22c55e","#1a3347","#142a3a"], ["#e11d48","#6366f1","#33202f","#291a26"],
+  ["#14b8a6","#eab308","#183535","#112b2b"], ["#f97316","#2563eb","#3a2a1a","#2e2115"],
+  ["#0f766e","#f59e0b","#13302d","#0e2623"], ["#7c3aed","#10b981","#241a3d","#1c142f"],
+  ["#dc2626","#0ea5e9","#3a1a1a","#2d1414"], ["#1d4ed8","#f97316","#14233f","#0f1b33"]
+];
+const VENT_ICONS = ["★","✈","☎","♥","⚒","✉"];
+const VENT_TAGS = ["Simplifying Everything","India's Trusted Portal","Explore More","Smart & Simple","Grow With Us"];
+const VENT_COLORS = ["#0b7fd4","#10b981","#8b5cf6","#ef4444","#f59e0b","#14b8a6"];
+const STYLE_COUNT = 10;
+
+const GENERIC_ICONS = [
+  "M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z",
+  "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z",
+  "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
+  "M12 2 22 12 12 22 2 12z",
+  "M12 2l9 5v10l-9 5-9-5V7z",
+  "M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z",
+  "M13 2 4 14h6l-1 8 9-12h-6z"
+];
+const GENERIC_PRE = ["Prime","Nova","Apex","Zenith","Urban","Bright","Swift","Royal","Elite","Smart","Metro","Sunrise","Orbit","Pioneer","Vertex","Aura","Crest","Lumen","Atlas","Maple"];
+
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const $ = id => document.getElementById(id);
+const sel = $("catSelect");
+Object.entries(CATEGORIES).forEach(([k,c]) => sel.add(new Option(c.label,k)));
+
+const esc = s => String(s).replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,"");
+const titleCase = s => String(s).replace(/\s+/g," ").trim().replace(/\b\w/g, m => m.toUpperCase());
+
+function buildCategory(label){
+  const full = titleCase(label);
+  const short = full.split(" ").slice(0,2).join(" ");
+  const first = full.split(" ")[0];
+  return {
+    label: full, icon: pick(GENERIC_ICONS), mid: full,
+    pre: GENERIC_PRE,
+    suf: [short, first+" Hub", first+" Point", first+" World", first+" Zone", first+" Plus", first+" Express", short+" Group"],
+    nav: ["LOGIN","HELP CENTER"], act: ["GET STARTED","CONTACT US"],
+    cols: [
+      ["General Links",["Home","About Us","Contact Us","Feedback","Complaints","Terms & Conditions","Careers","Sitemap"]],
+      [short+" Links",["Top "+short,short+" Services","Find "+short,"Compare "+short,short+" Offers",short+" Reviews",short+" Pricing","Book "+short,"Register Your "+short,short+" Partners","Post Requirement","Track Request","Download App","FAQ"]],
+      ["Popular "+short,["New "+short,"Best "+short,"Verified "+short,"Trending "+short,short+" Near You",short+" in India","Featured "+short,short+" Deals",short+" Plans",short+" Guides",short+" Blog",short+" News",short+" Tips",short+" Experts"]],
+      ["Quick Links",["Customer Care","Grievance","FAQ","Offers","Downloads","Partners","Blog","Security Tips"]],
+      ["Support",["Help Center","Contact Support","Report Issue","Privacy Policy","Disclaimer","Refund Policy","Careers","Sitemap"]]
+    ]
+  };
+}
+
+function findKey(label){
+  const n = norm(label);
+  return Object.keys(CATEGORIES).find(k => norm(CATEGORIES[k].label) === n);
+}
+
+function selectCategory(label){
+  const text = String(label || "").trim();
+  let key = text ? findKey(text) : sel.options[0].value;
+  if(!key){
+    key = norm(text) || "custom";
+    while(CATEGORIES[key]) key += "x";
+    CATEGORIES[key] = buildCategory(text);
+    sel.add(new Option(CATEGORIES[key].label, key));
+  }
+  sel.value = key;
+  apply();
+  return key;
+}
+
+function renderTable(){
+  const term = $("q").value.trim().toLowerCase();
+  const data = ROWS.filter(r => !term || Object.values(r).join(" ").toLowerCase().includes(term));
+  const hl = v => {
+    const s = esc(v);
+    if(!term) return s;
+    const i = String(v).toLowerCase().indexOf(term);
+    return i < 0 ? s : esc(String(v).slice(0,i)) + "<mark>" + esc(String(v).slice(i,i+term.length)) + "</mark>" + esc(String(v).slice(i+term.length));
+  };
+  let html = data.map(r => `<tr><td>${esc(r.name)}</td><td class="num"><mark class="phone-number">${hl(r.mobile)}</mark></td><td>${esc(r.email)}</td><td>${esc(r.date)}</td><td><button class="del" data-m="${esc(r.mobile)}">&#10006;</button></td></tr>`).join("");
+  if(!data.length) html = '<tr><td></td><td class="num"></td><td></td><td></td><td><button class="del">&#10006;</button></td></tr>';
+  $("tbody").innerHTML = html;
+}
+
+function setRow(row){
+  ROWS.length = 0;
+  ROWS.push(row);
+  $("q").value = "";
+  renderTable();
+}
+
+function listHtml(items){ return "<ul>" + items.map(x => `<li><a href="#">${esc(x)}</a></li>`).join("") + "</ul>"; }
+function twoCol(items){
+  const h = Math.ceil(items.length/2);
+  return `<div class="two-col">${listHtml(items.slice(0,h))}${listHtml(items.slice(h))}</div>`;
+}
+
+function apply(){
+  const key = sel.value, c = CATEGORIES[key];
+  const name = pick(c.pre) + " " + pick(c.suf);
+  const th = pick(THEMES), r = document.documentElement.style;
+  r.setProperty("--primary",th[0]); r.setProperty("--accent",th[1]);
+  r.setProperty("--dark",th[2]);    r.setProperty("--dark2",th[3]);
+  document.body.dataset.style = String(1 + Math.floor(Math.random()*STYLE_COUNT));
+
+  $("brandName").textContent = name;
+  $("brandTag").textContent = pick([".com",".in",".co.in"]);
+  $("logoPath").setAttribute("d", c.icon);
+  $("nl1").textContent = c.nav[0]; $("nl2").textContent = c.nav[1];
+  $("b1").textContent = c.act[0];  $("b2").textContent = c.act[1];
+  $("free").style.display = key === "realestate" ? "" : "none";
+
+  $("footGrid").innerHTML = c.cols.map((col,i) =>
+    `<div><h4>${esc(col[0])}</h4>${(i===1||i===2) ? twoCol(col[1]) : listHtml(col[1])}</div>`).join("");
+
+  const others = Object.entries(CATEGORIES).filter(([k]) => k !== key).map(([,v]) => v);
+  $("ventures").innerHTML = [0,1,2,3].map(i => {
+    const o = others[i % others.length];
+    return `<div class="v-item"><i style="background:${VENT_COLORS[(i+Math.floor(Math.random()*3))%6]}">${pick(VENT_ICONS)}</i><div>${esc(pick(o.pre) + " " + pick(o.suf))}<small>${pick(VENT_TAGS)}</small></div></div>`;
+  }).join("");
+
+  const short = name.split(" ")[0];
+  $("copy").textContent = "All Rights Reserved - " + name.replace(/ /g,"") + ".com (" + (1995 + Math.floor(Math.random()*15)) + ")";
+  $("group").innerHTML = esc(short) + ' <small>Group Venture</small>';
+  document.title = name + " | Admin";
+  renderTable();
+}
+
+window.selectCategory = selectCategory;
+window.setRow = setRow;
+window.shuffleSite = apply;
+
+sel.addEventListener("change", apply);
+$("shuffleBtn").addEventListener("click", apply);
+$("searchForm").addEventListener("submit", e => { e.preventDefault(); renderTable(); });
+$("q").addEventListener("input", renderTable);
+$("tbody").addEventListener("click", e => {
+  const b = e.target.closest(".del");
+  if(b && b.dataset.m && confirm("Delete this person?")){
+    const i = ROWS.findIndex(r => String(r.mobile) === b.dataset.m);
+    if(i > -1){ ROWS.splice(i,1); renderTable(); }
+  }
+});
+
+const wantedCategory = new URLSearchParams(location.search).get("category");
+if(wantedCategory) selectCategory(wantedCategory); else apply();
+</script>
+</body>
+</html>

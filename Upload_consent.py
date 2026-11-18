@@ -8,6 +8,10 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from playwright_runtime import configure_browser_path
+
+configure_browser_path()
+
 from playwright.sync_api import sync_playwright
 
 import license_check
@@ -18,14 +22,24 @@ try:
 except Exception:
     pass
 
-BASE = Path(__file__).resolve().parent
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(BASE / "output")))
-LOG_FILE = BASE / "upload_log.csv"
+if getattr(sys, "frozen", False):
+    BASE = Path(sys.executable).resolve().parent
+else:
+    BASE = Path(__file__).resolve().parent
+
+OUTPUT_DIR = Path(
+    os.getenv("OUTPUT_DIR", str(BASE / "output"))
+).expanduser()
+
+if not OUTPUT_DIR.is_absolute():
+    OUTPUT_DIR = BASE / OUTPUT_DIR
+
+LOG_FILE = OUTPUT_DIR / "upload_log.csv"
 PANEL_URL = os.getenv(
     "PANEL_URL",
     "https://www.redapp.vodafoneidea.com:1818/SmartRetentionEnterprise/Customer/Login",
 ).strip()
-LOGIN_EMAIL = os.getenv("LOGIN_EMAIL", "support@technomate.mobi").strip()
+LOGIN_EMAIL = os.getenv("LOGIN_EMAIL", "").strip()
 CDP_URL = os.getenv("CDP_URL", "http://localhost:9222")
 
 TARGET_STATUSES = [
@@ -106,11 +120,16 @@ def get_page(p):
         print("Debug Chrome nahi mila, Chrome khol raha hoon.")
         try:
             ctx = p.chromium.launch_persistent_context(
-                str(BASE / "chrome_profile"), channel="chrome", headless=False, viewport=None
+                str(license_check.USER_DATA_DIR / "chrome_profile"),
+                channel="chrome",
+                headless=False,
+                viewport=None,
             )
         except Exception:
             ctx = p.chromium.launch_persistent_context(
-                str(BASE / "chrome_profile"), headless=False, viewport=None
+                str(license_check.USER_DATA_DIR / "chrome_profile"),
+                headless=False,
+                viewport=None,
             )
         mode = "own"
 
@@ -137,22 +156,26 @@ def logged_in(page):
         return False
 
 
-def start_login(page):
+def start_login(page, login_email=""):
     if logged_in(page):
         return
     try:
         box = page.get_by_role("textbox", name="Your email address")
         box.wait_for(timeout=10000)
-        if not (box.input_value() or "").strip():
-            box.fill(LOGIN_EMAIL)
+        if login_email:
+            if (box.input_value() or "").strip() != login_email:
+                box.fill(login_email)
+        elif not (box.input_value() or "").strip():
+            print("Browser me apna email daal kar GET OTP dabao.")
+            return
         page.get_by_role("button", name="GET OTP").click()
         print("Email bhar diya aur GET OTP dab gaya. Ab 4 digit OTP daalo (Enter bhi dabao).")
     except Exception as e:
         print("Login ka auto step nahi hua, manually kar lo:", str(e)[:120])
 
 
-def wait_for_login(page, timeout_s=900):
-    start_login(page)
+def wait_for_login(page, login_email="", timeout_s=900):
+    start_login(page, login_email)
     print("OTP browser me daalo... login hote hi script aage chalegi.")
     end = time.time() + timeout_s
     while time.time() < end:
@@ -168,6 +191,22 @@ def wait_for_login(page, timeout_s=900):
             pass
         page.wait_for_timeout(1000)
     sys.exit("Login timeout: OTP time pe nahi daala gaya.")
+
+
+def prompt_for_login_email(cli_email=None):
+    if cli_email is not None:
+        email = cli_email.strip()
+    else:
+        prompt = "OTP kis email par bhejna hai?"
+        if LOGIN_EMAIL:
+            prompt += f" [{LOGIN_EMAIL}]"
+        email = input(prompt + " (blank = browser me khud bharein): ").strip()
+        if not email and LOGIN_EMAIL:
+            email = LOGIN_EMAIL
+
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise ValueError("Valid email address enter karein.")
+    return email
 
 
 def pending_numbers(page, status=None):
@@ -636,8 +675,13 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="kitne upload karne hain (0 = sab)")
     ap.add_argument("--dry-run", action="store_true", help="sab bharo par Submit mat karo")
     ap.add_argument("--confirm", action="store_true", help="har Submit se pehle tumse Enter/n puchta hai")
+    ap.add_argument("--email", help="OTP receive karne wala email (prompt skip karega)")
     args = ap.parse_args()
     license_check.require()
+    try:
+        login_email = prompt_for_login_email(args.email)
+    except ValueError as error:
+        ap.error(str(error))
 
     if not OUTPUT_DIR.exists():
         sys.exit(f"'output' folder nahi mila: {OUTPUT_DIR}")
@@ -647,7 +691,7 @@ def main():
 
     with sync_playwright() as p:
         page = get_page(p)
-        wait_for_login(page)
+        wait_for_login(page, login_email)
 
         handled, stats, tried = set(), {"ok": 0, "skip": 0, "error": 0, "dry": 0}, 0
         for status in TARGET_STATUSES:

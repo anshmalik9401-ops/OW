@@ -1,3 +1,5 @@
+import license_check
+
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
 import random
@@ -498,6 +500,7 @@ class PhoneNumberGenerator:
             messagebox.showwarning("Warning", "No output to copy!")
 
 if __name__ == "__main__":
+    license_check.require()
     root = tk.Tk()
     app = PhoneNumberGenerator(root)
     root.mainloop()

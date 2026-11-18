@@ -5,24 +5,43 @@ import csv
 import logging
 import shutil
 import math
+import sys
+import threading
+import urllib.error
+import urllib.request
 from datetime import datetime
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote
+
+from playwright_runtime import configure_browser_path
+
+configure_browser_path()
+
 from playwright.async_api import async_playwright
 
 import license_check
 
-BASE_DIR       = Path(__file__).parent
-TEMPLATE       = BASE_DIR / "template.html"
-CODE_PAGE      = BASE_DIR / "code.html"
-DATA_FILE      = BASE_DIR / "data.txt"
-OUTPUT_DIR     = BASE_DIR / "output"
-TRACKER_FILE   = BASE_DIR / "processed_numbers.json"
-REPORT_FILE    = OUTPUT_DIR / "processing_report.csv"
-LOG_FILE       = OUTPUT_DIR / "automation.log"
-SERVER_URL     = "http://127.0.0.1:8000"
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+
+TEMPLATE = BASE_DIR / "template.html"
+CODE_PAGE = BASE_DIR / "code.html"
+DATA_FILE = BASE_DIR / "data.txt"
+OUTPUT_DIR = BASE_DIR / "output"
+TRACKER_FILE = BASE_DIR / "processed_numbers.json"
+REPORT_FILE = OUTPUT_DIR / "processing_report.csv"
+LOG_FILE = OUTPUT_DIR / "automation.log"
+SERVER_HOST    = "127.0.0.1"
 VIEWPORT_W     = 1000
 VIEWPORT_H     = 900
+SERVER_ASSET_SUFFIXES = {
+    ".css", ".gif", ".ico", ".jpeg", ".jpg", ".js", ".png", ".svg",
+    ".ttf", ".webp", ".woff", ".woff2",
+}
 
 
 def load_processed_numbers() -> set:
@@ -113,6 +132,74 @@ def parse_data(filepath: Path) -> list[dict]:
                 "category": category,
             })
     return records
+
+
+class CustomerPageHandler(SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        candidate = Path(super().translate_path(path)).resolve()
+        try:
+            relative = candidate.relative_to(BASE_DIR.resolve())
+        except ValueError:
+            return str(BASE_DIR / "__not_served__")
+
+        forbidden_parts = {
+            ".git",
+            "admin.html",
+            "build",
+            "chrome_profile",
+            "dist",
+            "node_modules",
+            "output",
+            "release",
+            "server.js",
+        }
+        if (
+            not candidate.is_file()
+            or candidate.suffix.casefold() not in SERVER_ASSET_SUFFIXES | {".html"}
+            or any(part.casefold() in forbidden_parts for part in relative.parts)
+            or candidate.name.casefold() == "admin.html"
+        ):
+            return str(BASE_DIR / "__not_served__")
+        return str(candidate)
+
+
+def start_local_http_server():
+    if not CODE_PAGE.is_file():
+        raise RuntimeError(f"Required customer page is missing: {CODE_PAGE}")
+
+    handler = partial(CustomerPageHandler, directory=str(BASE_DIR))
+    server = ThreadingHTTPServer((SERVER_HOST, 0), handler)
+    server.daemon_threads = True
+    thread = threading.Thread(
+        target=server.serve_forever,
+        name="automation-http-server",
+        daemon=True,
+    )
+
+    try:
+        thread.start()
+        server_url = f"http://{SERVER_HOST}:{server.server_address[1]}"
+        with urllib.request.urlopen(f"{server_url}/code.html", timeout=5) as response:
+            if response.status != 200:
+                raise RuntimeError(
+                    f"Local server returned HTTP {response.status} for code.html"
+                )
+            response.read(1)
+        return server, thread, server_url
+    except Exception:
+        if thread.is_alive():
+            server.shutdown()
+            thread.join(timeout=5)
+        server.server_close()
+        raise
+
+
+def stop_local_http_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+    if thread.is_alive():
+        raise RuntimeError("Local HTML server did not stop cleanly")
 
 
 def dedupe_records(records: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -413,92 +500,108 @@ async def run(headless: bool = False):
     tracker_backup_created = False
     used_sites: dict = {}
 
-    async with async_playwright() as p:
-        browser = None
-        for record in records:
-            record["category"] = record.get("category") or "Real Estate"
-            target = resolve_category_page(record["category"])
-            if target is None:
-                error = f"No matching HTML page/category found for {record['category']!r}"
-                logging.error("Record %s: %s", record["number"], error)
-                print(f"  [ERROR] {record['number']} ({record['category']}): {error}")
-                append_report(record, "FAILED", error=error)
-                counts["FAILED"] += 1
-                continue
+    try:
+        server, server_thread, server_url = start_local_http_server()
+    except (OSError, RuntimeError, urllib.error.URLError) as error:
+        logging.exception("Could not start local HTML server")
+        print(f"Could not start the local HTML server: {error}")
+        return
 
-            key = record_key(record)
-            output_category = resolved_category_name(target)
-            category_output = OUTPUT_DIR / safe_category_name(output_category)
-            safe_number = re.sub(r"\D", "", record["number"])
-            canonical_shot = category_output / f"{safe_number}.png"
-            if canonical_shot.exists():
-                logging.info("Skipped previously processed record %s (%s)", record["number"], record["category"])
-                append_report(record, "SKIPPED", str(target["path"]), str(canonical_shot))
-                counts["SKIPPED"] += 1
-                continue
+    print(f"Local HTML server ready at {server_url}")
+    browser = None
+    try:
+        async with async_playwright() as p:
+            for record in records:
+                record["category"] = record.get("category") or "Real Estate"
+                target = resolve_category_page(record["category"])
+                if target is None:
+                    error = f"No matching HTML page/category found for {record['category']!r}"
+                    logging.error("Record %s: %s", record["number"], error)
+                    print(f"  [ERROR] {record['number']} ({record['category']}): {error}")
+                    append_report(record, "FAILED", error=error)
+                    counts["FAILED"] += 1
+                    continue
 
-            page = None
-            screenshot = ""
-            try:
-                if browser is None:
-                    browser = await p.chromium.launch(headless=headless)
-                page = await browser.new_page(viewport={"width": VIEWPORT_W, "height": VIEWPORT_H})
-                relative_path = target["path"].relative_to(BASE_DIR).as_posix()
-                url = f"{SERVER_URL}/{quote(relative_path, safe='/')}"
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(400)
+                key = record_key(record)
+                output_category = resolved_category_name(target)
+                category_output = OUTPUT_DIR / safe_category_name(output_category)
+                safe_number = re.sub(r"\D", "", record["number"])
+                canonical_shot = category_output / f"{safe_number}.png"
+                if canonical_shot.exists():
+                    logging.info("Skipped previously processed record %s (%s)", record["number"], record["category"])
+                    append_report(record, "SKIPPED", str(target["path"]), str(canonical_shot))
+                    counts["SKIPPED"] += 1
+                    continue
 
-                if target["mode"] == "category_app":
-                    await populate_category_app(page, target["label"], record, used_sites)
-                else:
-                    placeholder_count = await replace_placeholders(page, record)
-                    filled_fields = await fill_form_fields(page, record)
-                    if placeholder_count == 0 and not filled_fields:
-                        raise ValueError(
-                            f"{target['path'].name} has no supported record placeholders or fillable fields"
+                page = None
+                screenshot = ""
+                try:
+                    if browser is None:
+                        browser = await p.chromium.launch(headless=headless)
+                    page = await browser.new_page(viewport={"width": VIEWPORT_W, "height": VIEWPORT_H})
+                    relative_path = target["path"].relative_to(BASE_DIR).as_posix()
+                    url = f"{server_url}/{quote(relative_path, safe='/')}"
+                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    await page.wait_for_timeout(400)
+
+                    if target["mode"] == "category_app":
+                        await populate_category_app(page, target["label"], record, used_sites)
+                    else:
+                        placeholder_count = await replace_placeholders(page, record)
+                        filled_fields = await fill_form_fields(page, record)
+                        if placeholder_count == 0 and not filled_fields:
+                            raise ValueError(
+                                f"{target['path'].name} has no supported record placeholders or fillable fields"
+                            )
+                        await page.evaluate(
+                            """() => {
+                                document.querySelectorAll('tr td[height="100"]').forEach(cell => cell.closest("tr").remove());
+                            }"""
                         )
-                    await page.evaluate(
-                        """() => {
-                            document.querySelectorAll('tr td[height="100"]').forEach(cell => cell.closest("tr").remove());
-                        }"""
+
+                    screenshot_pathname = screenshot_path(output_category, record["number"])
+                    screenshot = str(screenshot_pathname)
+                    await screenshot_full_page(page, screenshot_pathname)
+                    processed_numbers.add(key)
+                    if not tracker_backup_created:
+                        backup_tracker_file()
+                        tracker_backup_created = True
+                    save_processed_numbers(processed_numbers)
+                    for old_screenshot in existing_number_screenshots(safe_number):
+                        if old_screenshot != screenshot_pathname:
+                            old_screenshot.unlink()
+                            logging.info("Removed duplicate screenshot for %s: %s", safe_number, old_screenshot)
+                    logging.info(
+                        "Processed number=%s category=%s page=%s screenshot=%s",
+                        record["number"], record["category"], target["path"], screenshot,
                     )
+                    print(f"  [OK] {record['number']} [{record['category']}] -> {screenshot_pathname.name}")
+                    append_report(record, "SUCCESS", str(target["path"]), screenshot)
+                    counts["SUCCESS"] += 1
+                except Exception as error:
+                    logging.exception(
+                        "Failed number=%s category=%s page=%s",
+                        record["number"], record["category"], target["path"],
+                    )
+                    print(f"  [ERROR] {record['number']} ({record['category']}) — {error}")
+                    append_report(record, "FAILED", str(target["path"]), screenshot, str(error))
+                    counts["FAILED"] += 1
+                finally:
+                    if page is not None:
+                        try:
+                            await page.close()
+                        except Exception as error:
+                            logging.warning("Could not close page for %s: %s", record["number"], error)
 
-                screenshot_pathname = screenshot_path(output_category, record["number"])
-                screenshot = str(screenshot_pathname)
-                await screenshot_full_page(page, screenshot_pathname)
-                processed_numbers.add(key)
-                if not tracker_backup_created:
-                    backup_tracker_file()
-                    tracker_backup_created = True
-                save_processed_numbers(processed_numbers)
-                for old_screenshot in existing_number_screenshots(safe_number):
-                    if old_screenshot != screenshot_pathname:
-                        old_screenshot.unlink()
-                        logging.info("Removed duplicate screenshot for %s: %s", safe_number, old_screenshot)
-                logging.info(
-                    "Processed number=%s category=%s page=%s screenshot=%s",
-                    record["number"], record["category"], target["path"], screenshot,
-                )
-                print(f"  [OK] {record['number']} [{record['category']}] -> {screenshot_pathname.name}")
-                append_report(record, "SUCCESS", str(target["path"]), screenshot)
-                counts["SUCCESS"] += 1
-            except Exception as error:
-                logging.exception(
-                    "Failed number=%s category=%s page=%s",
-                    record["number"], record["category"], target["path"],
-                )
-                print(f"  [ERROR] {record['number']} ({record['category']}) — {error}")
-                append_report(record, "FAILED", str(target["path"]), screenshot, str(error))
-                counts["FAILED"] += 1
-            finally:
-                if page is not None:
-                    try:
-                        await page.close()
-                    except Exception as error:
-                        logging.warning("Could not close page for %s: %s", record["number"], error)
-
-        if browser is not None:
-            await browser.close()
+            if browser is not None:
+                await browser.close()
+    finally:
+        try:
+            stop_local_http_server(server, server_thread)
+            print("Local HTML server stopped.")
+        except RuntimeError as error:
+            logging.exception("Could not stop local HTML server cleanly")
+            print(f"Warning: {error}")
 
     print(
         f"\nSuccessful: {counts['SUCCESS']} | "
